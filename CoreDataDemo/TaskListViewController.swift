@@ -3,13 +3,13 @@
 //  CoreDataDemo
 //
 //  Created by brubru on 24.01.2022.
+//  Contributed by Сашок
 //
 
 import UIKit
-import CoreData
 
 class TaskListViewController: UITableViewController {
-    private let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+    private let context = StorageManager.shared.persistentContainer.viewContext
     
     private let cellID = "task"
     private var taskList: [Task] = []
@@ -27,7 +27,57 @@ class TaskListViewController: UITableViewController {
         fetchData()
         tableView.reloadData()
     }
- 
+    
+    private func fetchData() {
+        let fetchRequest = Task.fetchRequest()
+        
+        do {
+            taskList = try context.fetch(fetchRequest)
+        } catch {
+           print("Faild to fetch data", error)
+        }
+    }
+}
+
+extension TaskListViewController {
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        taskList.count
+    }
+    
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath)
+        let task = taskList[indexPath.row]
+        
+        var content = cell.defaultContentConfiguration()
+        content.text = task.name
+        cell.contentConfiguration = content
+        return cell
+    }
+    
+    override func tableView(_ tableView: UITableView,
+                            trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        
+        let editAction = UIContextualAction(style: .normal, title: "Edit") { action, view, completion in
+            let task = self.taskList[indexPath.row]
+            
+            self.showAlert(title: "Edit task", message: "What do you want to change?", initialText: task.name) { newTask in
+                self.setNewTask(newTask, at: indexPath)
+            }
+        }
+        
+        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { action, view, completion in
+            let task = self.taskList.remove(at: indexPath.row)
+            tableView.deleteRows(at: [indexPath], with: .automatic)
+            
+            StorageManager.shared.persistentContainer.viewContext.delete(task)
+            StorageManager.shared.saveContext()
+        }
+        
+        return UISwipeActionsConfiguration(actions: [deleteAction, editAction])
+    }
+}
+
+extension TaskListViewController {
     private func setupNavigationBar() {
         title = "Task List"
         navigationController?.navigationBar.prefersLargeTitles = true
@@ -54,41 +104,36 @@ class TaskListViewController: UITableViewController {
         )
         
         navigationController?.navigationBar.tintColor = .white
-        
     }
     
     @objc private func addNewTask() {
-        showAlert(with: "New Task", and: "What do you want to do?")
-    }
-    
-    private func fetchData() {
-        let fetchRequest = Task.fetchRequest()
-        
-        do {
-            taskList = try context.fetch(fetchRequest)
-        } catch {
-           print("Faild to fetch data", error)
+        showAlert(title: "New task", message: "What do you want to do?") { task in
+            self.addTask(task)
         }
     }
-    
-    private func showAlert(with title: String, and message: String) {
+}
+
+extension TaskListViewController {
+    private func showAlert(title: String, message: String, initialText: String? = nil, saveAction: @escaping (String) -> Void) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        
         let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
             guard let task = alert.textFields?.first?.text, !task.isEmpty else { return }
-            self.save(task)
+            saveAction(task)
         }
+        alert.addAction(saveAction)
         
         let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
-        
-        alert.addAction(saveAction)
         alert.addAction(cancelAction)
+        
         alert.addTextField { textField in
-            textField.placeholder = "New Task"
+            textField.placeholder = "Task"
+            textField.text = initialText
         }
         present(alert, animated: true)
     }
-    private func save(_ taskName: String) {
-        
+    
+    private func addTask(_ taskName: String) {
         let task = Task(context: context)
         task.name = taskName
         taskList.append(task)
@@ -96,26 +141,13 @@ class TaskListViewController: UITableViewController {
         let cellIndex = IndexPath(row: taskList.count - 1, section: 0)
         tableView.insertRows(at: [cellIndex], with: .automatic)
         
-        do {
-            try context.save()
-        } catch let error {
-            print(error)
-        }
-    }
-}
-
-extension TaskListViewController {
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        taskList.count
+        StorageManager.shared.saveContext()
     }
     
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath)
+    private func setNewTask(_ newTask: String, at indexPath: IndexPath) {
         let task = taskList[indexPath.row]
-        
-        var content = cell.defaultContentConfiguration()
-        content.text = task.name
-        cell.contentConfiguration = content
-        return cell
+        task.name = newTask
+        tableView.reloadRows(at: [indexPath], with: .automatic)
+        StorageManager.shared.saveContext()
     }
 }
